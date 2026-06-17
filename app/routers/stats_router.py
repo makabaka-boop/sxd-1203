@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api/stats", tags=["统计分析与查询"])
 def query_adjustments(
     role_type_id: Optional[int] = None,
     joint_group_id: Optional[int] = None,
+    responsible_person_id: Optional[int] = None,
     workbench_id: Optional[int] = None,
     adjuster_id: Optional[int] = None,
     status: Optional[PuppetStatus] = None,
@@ -31,12 +32,15 @@ def query_adjustments(
 ):
     query = db.query(Adjustment)
 
-    if role_type_id or joint_group_id:
+    need_puppet_join = role_type_id or joint_group_id or responsible_person_id
+    if need_puppet_join:
         query = query.join(Puppet, Adjustment.puppet_id == Puppet.id)
         if role_type_id:
             query = query.filter(Puppet.role_type_id == role_type_id)
         if joint_group_id:
             query = query.filter(Puppet.joint_group_id == joint_group_id)
+        if responsible_person_id:
+            query = query.filter(Puppet.responsible_person_id == responsible_person_id)
 
     if workbench_id:
         query = query.filter(Adjustment.workbench_id == workbench_id)
@@ -58,6 +62,7 @@ def query_adjustments(
 def query_puppets(
     role_type_id: Optional[int] = None,
     joint_group_id: Optional[int] = None,
+    responsible_person_id: Optional[int] = None,
     workbench_id: Optional[int] = None,
     current_status: Optional[PuppetStatus] = None,
     start_date: Optional[date] = None,
@@ -78,6 +83,8 @@ def query_puppets(
         query = query.filter(Puppet.role_type_id == role_type_id)
     if joint_group_id:
         query = query.filter(Puppet.joint_group_id == joint_group_id)
+    if responsible_person_id:
+        query = query.filter(Puppet.responsible_person_id == responsible_person_id)
     if current_status:
         query = query.filter(Puppet.current_status == current_status)
     if start_date:
@@ -105,6 +112,8 @@ def query_puppets(
             "last_passed_date": p.last_passed_date,
             "role_type_name": p.role_type.name if p.role_type else "",
             "joint_group_name": p.joint_group.name if p.joint_group else "",
+            "responsible_person_id": p.responsible_person_id,
+            "responsible_person_name": p.responsible_person.full_name if p.responsible_person else "",
         }
         if p.current_adjustment:
             info["workbench_code"] = p.current_adjustment.workbench.code if p.current_adjustment.workbench else ""

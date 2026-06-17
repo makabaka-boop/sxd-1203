@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 from app.schemas import UserCreate, UserLogin, TokenResponse, UserResponse
 from app.auth import (
     verify_password,
@@ -43,6 +43,12 @@ def login(form_data: UserLogin, db: Session = Depends(get_db)):
 
 @router.post("/register", response_model=UserResponse)
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
+    if user_data.role == UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="禁止通过注册接口创建管理员账号，请由现有管理员在用户管理中创建"
+        )
+
     existing_user = db.query(User).filter(User.username == user_data.username).first()
     if existing_user:
         raise HTTPException(

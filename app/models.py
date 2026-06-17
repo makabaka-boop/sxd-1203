@@ -83,6 +83,7 @@ class Puppet(Base):
     name = Column(String(100), nullable=False)
     role_type_id = Column(Integer, ForeignKey("role_types.id"), nullable=False)
     joint_group_id = Column(Integer, ForeignKey("joint_groups.id"), nullable=False)
+    responsible_person_id = Column(Integer, ForeignKey("users.id"), index=True)
     current_status = Column(Enum(PuppetStatus), default=PuppetStatus.PENDING_ENTER, index=True)
     review_cycle_days = Column(Integer, default=30)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -91,6 +92,7 @@ class Puppet(Base):
 
     role_type = relationship("RoleType", lazy="joined")
     joint_group = relationship("JointGroup", lazy="joined")
+    responsible_person = relationship("User", foreign_keys=[responsible_person_id], lazy="joined")
     current_adjustment = relationship(
         "Adjustment",
         foreign_keys=[current_adjustment_id],

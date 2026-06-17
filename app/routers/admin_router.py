@@ -301,6 +301,11 @@ def create_puppet(
     if not joint_group:
         raise HTTPException(status_code=404, detail="关节组不存在")
 
+    if data.responsible_person_id:
+        person = db.query(User).filter(User.id == data.responsible_person_id).first()
+        if not person:
+            raise HTTPException(status_code=404, detail="责任人不存在")
+
     obj = Puppet(**data.model_dump())
     db.add(obj)
     db.commit()
@@ -312,6 +317,7 @@ def create_puppet(
 def list_puppets(
     role_type_id: Optional[int] = None,
     joint_group_id: Optional[int] = None,
+    responsible_person_id: Optional[int] = None,
     current_status: Optional[PuppetStatus] = None,
     keyword: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -322,6 +328,8 @@ def list_puppets(
         query = query.filter(Puppet.role_type_id == role_type_id)
     if joint_group_id:
         query = query.filter(Puppet.joint_group_id == joint_group_id)
+    if responsible_person_id:
+        query = query.filter(Puppet.responsible_person_id == responsible_person_id)
     if current_status:
         query = query.filter(Puppet.current_status == current_status)
     if keyword:

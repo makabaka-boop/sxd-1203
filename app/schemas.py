@@ -126,6 +126,7 @@ class PuppetBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     role_type_id: int
     joint_group_id: int
+    responsible_person_id: Optional[int] = None
     review_cycle_days: int = Field(default=30, ge=1)
 
 
@@ -137,6 +138,7 @@ class PuppetUpdate(BaseModel):
     name: Optional[str] = None
     role_type_id: Optional[int] = None
     joint_group_id: Optional[int] = None
+    responsible_person_id: Optional[int] = None
     review_cycle_days: Optional[int] = None
 
 
@@ -146,12 +148,14 @@ class PuppetResponse(BaseModel):
     name: str
     role_type_id: int
     joint_group_id: int
+    responsible_person_id: Optional[int] = None
     current_status: PuppetStatus
     review_cycle_days: int
     created_at: datetime
     last_passed_date: Optional[date]
     role_type: Optional[RoleTypeResponse]
     joint_group: Optional[JointGroupResponse]
+    responsible_person: Optional[UserResponse] = None
 
     class Config:
         from_attributes = True

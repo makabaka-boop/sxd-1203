@@ -32,10 +32,14 @@ def enter_workbench(
     if not puppet:
         raise HTTPException(status_code=404, detail="木偶不存在")
 
-    if puppet.current_status in ACTIVE_STATUSES and puppet.current_adjustment_id:
+    active_adj = db.query(Adjustment).filter(
+        Adjustment.puppet_id == data.puppet_id,
+        Adjustment.status.in_(ACTIVE_STATUSES)
+    ).first()
+    if active_adj:
         raise HTTPException(
             status_code=400,
-            detail=f"该木偶当前状态为「{puppet.current_status.value}」，已有活跃调校单，不可重复入台"
+            detail=f"该木偶已有活跃调校单（#{active_adj.id}，状态「{active_adj.status.value}」），不可重复入台"
         )
 
     workbench = db.query(Workbench).filter(Workbench.id == data.workbench_id).first()

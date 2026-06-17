@@ -87,14 +87,14 @@ def init_db():
 
         if db.query(Puppet).count() == 0:
             puppets = [
-                Puppet(code="P-001", name="孙悟空一号", role_type_id=1, joint_group_id=1, review_cycle_days=30),
-                Puppet(code="P-002", name="唐僧一号", role_type_id=1, joint_group_id=2, review_cycle_days=30),
-                Puppet(code="P-003", name="猪八戒一号", role_type_id=1, joint_group_id=1, review_cycle_days=30),
-                Puppet(code="P-004", name="沙和尚一号", role_type_id=2, joint_group_id=1, review_cycle_days=45),
-                Puppet(code="P-005", name="白龙马一号", role_type_id=4, joint_group_id=4, review_cycle_days=60),
-                Puppet(code="P-006", name="观音菩萨", role_type_id=2, joint_group_id=2, review_cycle_days=45),
-                Puppet(code="P-007", name="小妖甲", role_type_id=3, joint_group_id=4, review_cycle_days=90),
-                Puppet(code="P-008", name="小妖乙", role_type_id=3, joint_group_id=4, review_cycle_days=90),
+                Puppet(code="P-001", name="孙悟空一号", role_type_id=1, joint_group_id=1, responsible_person_id=2, review_cycle_days=30),
+                Puppet(code="P-002", name="唐僧一号", role_type_id=1, joint_group_id=2, responsible_person_id=2, review_cycle_days=30),
+                Puppet(code="P-003", name="猪八戒一号", role_type_id=1, joint_group_id=1, responsible_person_id=3, review_cycle_days=30),
+                Puppet(code="P-004", name="沙和尚一号", role_type_id=2, joint_group_id=1, responsible_person_id=3, review_cycle_days=45),
+                Puppet(code="P-005", name="白龙马一号", role_type_id=4, joint_group_id=4, responsible_person_id=2, review_cycle_days=60),
+                Puppet(code="P-006", name="观音菩萨", role_type_id=2, joint_group_id=2, responsible_person_id=3, review_cycle_days=45),
+                Puppet(code="P-007", name="小妖甲", role_type_id=3, joint_group_id=4, responsible_person_id=2, review_cycle_days=90),
+                Puppet(code="P-008", name="小妖乙", role_type_id=3, joint_group_id=4, responsible_person_id=3, review_cycle_days=90),
                 Puppet(code="P-009", name="树精", role_type_id=3, joint_group_id=2, review_cycle_days=60),
                 Puppet(code="P-010", name="山神道具", role_type_id=5, joint_group_id=2, review_cycle_days=120),
             ]
