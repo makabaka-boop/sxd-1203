@@ -4,10 +4,11 @@ from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
 from app.database import get_db
 from app.models import (
-    User, Puppet, PuppetStatus, Adjustment, Workbench
+    User, Puppet, PuppetStatus, Adjustment, Workbench, ReturnRecord
 )
 from app.schemas import (
-    ReviewRequest, AdjustmentResponse, SealObservationRequest
+    ReviewRequest, AdjustmentResponse, SealObservationRequest,
+    ReturnRecordResponse
 )
 from app.auth import require_reviewer, require_admin_or_reviewer, get_current_user
 
@@ -77,11 +78,26 @@ def review_adjustment(
         puppet.last_passed_date = date.today()
         puppet.current_adjustment_id = None
     else:
+        if not data.return_reason:
+            raise HTTPException(
+                status_code=400,
+                detail="返调时必须填写返调原因"
+            )
+
+        adj.return_count = (adj.return_count or 0) + 1
         adj.status = PuppetStatus.RETURNING
         puppet.current_status = PuppetStatus.RETURNING
-        if data.review_opinion:
-            adj.return_action_note = (adj.return_action_note or "") + \
-                f"\n【返调意见】{data.review_opinion}"
+
+        return_record = ReturnRecord(
+            adjustment_id=adj_id,
+            return_count=adj.return_count,
+            return_reason=data.return_reason,
+            return_requirement=data.return_requirement,
+            expected_complete_time=data.expected_complete_time,
+            reviewer_id=current_user.id,
+            reviewer_opinion=data.review_opinion
+        )
+        db.add(return_record)
 
     db.commit()
     db.refresh(adj)
@@ -174,3 +190,18 @@ def get_overdue_review(
             "adjuster_name": adj.adjuster.full_name if adj.adjuster else ""
         })
     return result
+
+
+@router.get("/adjustments/{adj_id}/return-records", response_model=List[ReturnRecordResponse])
+def get_return_records(
+    adj_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_reviewer)
+):
+    adj = db.query(Adjustment).filter(Adjustment.id == adj_id).first()
+    if not adj:
+        raise HTTPException(status_code=404, detail="调校单不存在")
+    records = db.query(ReturnRecord).filter(
+        ReturnRecord.adjustment_id == adj_id
+    ).order_by(ReturnRecord.return_count.asc()).all()
+    return records

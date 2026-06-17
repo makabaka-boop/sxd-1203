@@ -121,6 +121,7 @@ class Adjustment(Base):
     deviation_note = Column(Text)
     review_opinion = Column(Text)
     is_passed = Column(Integer, default=0)
+    return_count = Column(Integer, default=0)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -133,6 +134,11 @@ class Adjustment(Base):
         "JointAdjustment",
         back_populates="adjustment",
         cascade="all, delete-orphan"
+    )
+    return_records = relationship(
+        "ReturnRecord",
+        back_populates="adjustment",
+        order_by="ReturnRecord.return_count.asc()"
     )
 
 
@@ -151,3 +157,23 @@ class JointAdjustment(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     adjustment = relationship("Adjustment", back_populates="joint_adjustments")
+
+
+class ReturnRecord(Base):
+    __tablename__ = "return_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    adjustment_id = Column(Integer, ForeignKey("adjustments.id"), nullable=False, index=True)
+    return_count = Column(Integer, nullable=False)
+    return_reason = Column(Text, nullable=False)
+    return_requirement = Column(Text)
+    expected_complete_time = Column(DateTime)
+    reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    reviewer_opinion = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    adjuster_handle_note = Column(Text)
+    actual_complete_time = Column(DateTime)
+
+    adjustment = relationship("Adjustment", back_populates="return_records")
+    reviewer = relationship("User", foreign_keys=[reviewer_id], lazy="joined")

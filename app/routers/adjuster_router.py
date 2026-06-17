@@ -4,12 +4,13 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from app.database import get_db
 from app.models import (
-    User, Puppet, PuppetStatus, Adjustment, JointAdjustment, Workbench, RoleType
+    User, Puppet, PuppetStatus, Adjustment, JointAdjustment, Workbench, RoleType,
+    ReturnRecord
 )
 from app.schemas import (
     AdjustmentEnterRequest, AdjustmentUpdateRequest, SubmitReviewRequest,
     JointAdjustmentCreate, JointAdjustmentUpdate, JointAdjustmentResponse,
-    AdjustmentResponse, PuppetResponse
+    AdjustmentResponse, PuppetResponse, ReturnRecordResponse, ReturnHandleRequest
 )
 from app.auth import require_adjuster, get_current_user
 
@@ -268,6 +269,13 @@ def submit_for_review(
             if value is not None:
                 setattr(adj, field, value)
 
+    if adj.status == PuppetStatus.RETURNING:
+        latest_record = db.query(ReturnRecord).filter(
+            ReturnRecord.adjustment_id == adj_id
+        ).order_by(ReturnRecord.return_count.desc()).first()
+        if latest_record and not latest_record.actual_complete_time:
+            latest_record.actual_complete_time = datetime.utcnow()
+
     adj.status = PuppetStatus.PENDING_REVIEW
     adj.submit_review_time = datetime.utcnow()
     adj.updated_at = datetime.utcnow()
@@ -298,3 +306,115 @@ def get_joint_stuck_list(
         }
         for s in stucks
     ]
+
+
+@router.get("/return-todo", response_model=List[AdjustmentResponse])
+def list_return_todo(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_adjuster)
+):
+    return db.query(Adjustment).filter(
+        Adjustment.adjuster_id == current_user.id,
+        Adjustment.status == PuppetStatus.RETURNING
+    ).order_by(Adjustment.updated_at.asc()).all()
+
+
+@router.get("/adjustments/{adj_id}/return-detail")
+def get_return_detail(
+    adj_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_adjuster)
+):
+    adj = db.query(Adjustment).filter(Adjustment.id == adj_id).first()
+    if not adj:
+        raise HTTPException(status_code=404, detail="调校单不存在")
+    if adj.adjuster_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权查看此调校单")
+
+    records = db.query(ReturnRecord).filter(
+        ReturnRecord.adjustment_id == adj_id
+    ).order_by(ReturnRecord.return_count.asc()).all()
+
+    latest_record = records[-1] if records else None
+
+    return {
+        "adjustment_id": adj_id,
+        "puppet_code": adj.puppet.code if adj.puppet else "",
+        "puppet_name": adj.puppet.name if adj.puppet else "",
+        "status": adj.status.value,
+        "return_count": adj.return_count,
+        "latest_return_reason": latest_record.return_reason if latest_record else None,
+        "latest_return_requirement": latest_record.return_requirement if latest_record else None,
+        "latest_expected_complete_time": latest_record.expected_complete_time if latest_record else None,
+        "latest_reviewer_opinion": latest_record.reviewer_opinion if latest_record else None,
+        "return_records": [
+            {
+                "id": r.id,
+                "return_count": r.return_count,
+                "return_reason": r.return_reason,
+                "return_requirement": r.return_requirement,
+                "expected_complete_time": r.expected_complete_time,
+                "reviewer_opinion": r.reviewer_opinion,
+                "created_at": r.created_at,
+                "adjuster_handle_note": r.adjuster_handle_note,
+                "actual_complete_time": r.actual_complete_time,
+                "is_overdue": (
+                    r.expected_complete_time is not None
+                    and r.actual_complete_time is not None
+                    and r.actual_complete_time > r.expected_complete_time
+                ) if r.actual_complete_time else (
+                    r.expected_complete_time is not None
+                    and datetime.utcnow() > r.expected_complete_time
+                )
+            }
+            for r in records
+        ]
+    }
+
+
+@router.post("/adjustments/{adj_id}/handle-return", response_model=ReturnRecordResponse)
+def handle_return(
+    adj_id: int,
+    data: ReturnHandleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_adjuster)
+):
+    adj = db.query(Adjustment).filter(Adjustment.id == adj_id).first()
+    if not adj:
+        raise HTTPException(status_code=404, detail="调校单不存在")
+    if adj.adjuster_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权操作此调校单")
+    if adj.status != PuppetStatus.RETURNING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"当前状态为「{adj.status.value}」，不是返调中状态"
+        )
+
+    latest_record = db.query(ReturnRecord).filter(
+        ReturnRecord.adjustment_id == adj_id
+    ).order_by(ReturnRecord.return_count.desc()).first()
+
+    if not latest_record:
+        raise HTTPException(status_code=400, detail="未找到返调记录")
+
+    latest_record.adjuster_handle_note = data.adjuster_handle_note
+    db.commit()
+    db.refresh(latest_record)
+    return latest_record
+
+
+@router.get("/adjustments/{adj_id}/return-records", response_model=List[ReturnRecordResponse])
+def get_return_records(
+    adj_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_adjuster)
+):
+    adj = db.query(Adjustment).filter(Adjustment.id == adj_id).first()
+    if not adj:
+        raise HTTPException(status_code=404, detail="调校单不存在")
+    if adj.adjuster_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权查看此调校单")
+    records = db.query(ReturnRecord).filter(
+        ReturnRecord.adjustment_id == adj_id
+    ).order_by(ReturnRecord.return_count.asc()).all()
+    return records

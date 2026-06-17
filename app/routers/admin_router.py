@@ -4,14 +4,16 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from app.database import get_db
 from app.models import (
-    User, UserRole, RoleType, JointGroup, Workbench, Puppet, PuppetStatus, Adjustment
+    User, UserRole, RoleType, JointGroup, Workbench, Puppet, PuppetStatus, Adjustment,
+    ReturnRecord
 )
 from app.schemas import (
     UserCreate, UserUpdate, UserResponse,
     RoleTypeCreate, RoleTypeUpdate, RoleTypeResponse,
     JointGroupCreate, JointGroupUpdate, JointGroupResponse,
     WorkbenchCreate, WorkbenchUpdate, WorkbenchResponse,
-    PuppetCreate, PuppetUpdate, PuppetResponse, AdjustmentResponse
+    PuppetCreate, PuppetUpdate, PuppetResponse, AdjustmentResponse,
+    ReturnRecordResponse, PuppetReturnInfo
 )
 from app.auth import require_admin, get_password_hash
 
@@ -384,3 +386,55 @@ def get_puppet_adjustments(
         raise HTTPException(status_code=404, detail="木偶不存在")
     adjs = db.query(Adjustment).filter(Adjustment.puppet_id == puppet_id).order_by(Adjustment.created_at.desc()).all()
     return adjs
+
+
+@router.get("/puppets/{puppet_id}/return-info", response_model=PuppetReturnInfo)
+def get_puppet_return_info(
+    puppet_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin)
+):
+    puppet = db.query(Puppet).filter(Puppet.id == puppet_id).first()
+    if not puppet:
+        raise HTTPException(status_code=404, detail="木偶不存在")
+
+    adjustments = db.query(Adjustment).filter(Adjustment.puppet_id == puppet_id).all()
+    adj_ids = [a.id for a in adjustments]
+
+    total_return_count = sum(a.return_count or 0 for a in adjustments)
+
+    all_records = db.query(ReturnRecord).filter(
+        ReturnRecord.adjustment_id.in_(adj_ids)
+    ).order_by(ReturnRecord.created_at.desc()).all() if adj_ids else []
+
+    current_return_progress = None
+    active_adj = db.query(Adjustment).filter(
+        Adjustment.puppet_id == puppet_id,
+        Adjustment.status == PuppetStatus.RETURNING
+    ).first()
+    if active_adj:
+        current_return_progress = f"第{active_adj.return_count}次返调中"
+
+    latest_return_reason = all_records[0].return_reason if all_records else None
+
+    return PuppetReturnInfo(
+        total_return_count=total_return_count,
+        current_return_progress=current_return_progress,
+        latest_return_reason=latest_return_reason,
+        return_records=all_records
+    )
+
+
+@router.get("/adjustments/{adj_id}/return-records", response_model=List[ReturnRecordResponse])
+def get_adjustment_return_records(
+    adj_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin)
+):
+    adj = db.query(Adjustment).filter(Adjustment.id == adj_id).first()
+    if not adj:
+        raise HTTPException(status_code=404, detail="调校单不存在")
+    records = db.query(ReturnRecord).filter(
+        ReturnRecord.adjustment_id == adj_id
+    ).order_by(ReturnRecord.return_count.asc()).all()
+    return records

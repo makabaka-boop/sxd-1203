@@ -219,6 +219,9 @@ class ReviewRequest(BaseModel):
     deviation_note: Optional[str] = None
     review_opinion: Optional[str] = None
     is_passed: int
+    return_reason: Optional[str] = None
+    return_requirement: Optional[str] = None
+    expected_complete_time: Optional[datetime] = None
 
 
 class AdjustmentResponse(BaseModel):
@@ -238,6 +241,7 @@ class AdjustmentResponse(BaseModel):
     deviation_note: Optional[str]
     review_opinion: Optional[str]
     is_passed: int
+    return_count: int
     created_at: datetime
     updated_at: datetime
     puppet: Optional[PuppetResponse]
@@ -245,6 +249,7 @@ class AdjustmentResponse(BaseModel):
     adjuster: Optional[UserResponse]
     reviewer: Optional[UserResponse]
     joint_adjustments: List[JointAdjustmentResponse]
+    return_records: List["ReturnRecordResponse"] = []
 
     class Config:
         from_attributes = True
@@ -288,3 +293,55 @@ class WarningItem(BaseModel):
 
 class SealObservationRequest(BaseModel):
     review_opinion: Optional[str] = None
+
+
+class ReturnRecordResponse(BaseModel):
+    id: int
+    adjustment_id: int
+    return_count: int
+    return_reason: str
+    return_requirement: Optional[str]
+    expected_complete_time: Optional[datetime]
+    reviewer_id: int
+    reviewer_opinion: Optional[str]
+    created_at: datetime
+    adjuster_handle_note: Optional[str]
+    actual_complete_time: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class ReturnHandleRequest(BaseModel):
+    adjuster_handle_note: str = Field(..., min_length=1)
+
+
+class PuppetReturnInfo(BaseModel):
+    total_return_count: int
+    current_return_progress: Optional[str]
+    latest_return_reason: Optional[str]
+    return_records: List[ReturnRecordResponse]
+
+
+class ReturnRateResponse(BaseModel):
+    total_reviewed: int
+    total_returned: int
+    return_rate: float
+
+
+class AdjusterReturnRankItem(BaseModel):
+    adjuster_id: int
+    adjuster_name: str
+    total_return_count: int
+    rank: int
+
+
+class OverdueReturnItem(BaseModel):
+    adjustment_id: int
+    puppet_code: str
+    puppet_name: str
+    adjuster_name: str
+    return_count: int
+    expected_complete_time: Optional[datetime]
+    overdue_hours: float
+    latest_return_reason: Optional[str]

@@ -6,11 +6,12 @@ from datetime import datetime, date, timedelta
 from app.database import get_db
 from app.models import (
     User, Puppet, PuppetStatus, Adjustment, JointAdjustment,
-    JointName, Workbench, RoleType, UserRole
+    JointName, Workbench, RoleType, UserRole, ReturnRecord
 )
 from app.schemas import (
     AdjustmentResponse, JointAbnormalRank, AdjustmentPassRate,
-    PendingReviewItem, WarningItem
+    PendingReviewItem, WarningItem, ReturnRateResponse,
+    AdjusterReturnRankItem, OverdueReturnItem
 )
 from app.auth import get_current_user
 
@@ -348,3 +349,113 @@ def get_overview(
             s.value: status_map.get(s.value, 0) for s in PuppetStatus
         }
     }
+
+
+@router.get("/return-rate", response_model=ReturnRateResponse)
+def get_return_rate(
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    adjuster_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user)
+):
+    base_filter = [Adjustment.review_time.isnot(None)]
+
+    if start_date:
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        base_filter.append(Adjustment.review_time >= start_dt)
+    if end_date:
+        end_dt = datetime.combine(end_date, datetime.max.time())
+        base_filter.append(Adjustment.review_time <= end_dt)
+    if adjuster_id:
+        base_filter.append(Adjustment.adjuster_id == adjuster_id)
+
+    filter_condition = and_(*base_filter)
+
+    total_reviewed = db.query(func.count(Adjustment.id)).filter(filter_condition).scalar() or 0
+    total_returned = db.query(func.count(Adjustment.id)).filter(
+        filter_condition, Adjustment.is_passed == 0
+    ).scalar() or 0
+
+    rate = round((total_returned / total_reviewed * 100), 2) if total_reviewed > 0 else 0.0
+
+    return ReturnRateResponse(
+        total_reviewed=total_reviewed,
+        total_returned=total_returned,
+        return_rate=rate
+    )
+
+
+@router.get("/adjuster-return-rank", response_model=List[AdjusterReturnRankItem])
+def get_adjuster_return_rank(
+    limit: int = Query(default=10, ge=1, le=50),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user)
+):
+    query = db.query(
+        Adjustment.adjuster_id,
+        func.sum(Adjustment.return_count).label("total_return_count")
+    ).filter(Adjustment.return_count > 0)
+
+    if start_date:
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        query = query.filter(Adjustment.created_at >= start_dt)
+    if end_date:
+        end_dt = datetime.combine(end_date, datetime.max.time())
+        query = query.filter(Adjustment.created_at <= end_dt)
+
+    result = query.group_by(Adjustment.adjuster_id).order_by(
+        func.sum(Adjustment.return_count).desc()
+    ).limit(limit).all()
+
+    rank_list = []
+    for idx, (adjuster_id, total_return_count) in enumerate(result, start=1):
+        user = db.query(User).filter(User.id == adjuster_id).first()
+        rank_list.append(AdjusterReturnRankItem(
+            adjuster_id=adjuster_id,
+            adjuster_name=user.full_name if user else "",
+            total_return_count=int(total_return_count or 0),
+            rank=idx
+        ))
+    return rank_list
+
+
+@router.get("/overdue-returns", response_model=List[OverdueReturnItem])
+def get_overdue_returns(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user)
+):
+    now = datetime.utcnow()
+
+    returning_adjs = db.query(Adjustment).filter(
+        Adjustment.status == PuppetStatus.RETURNING
+    ).all()
+
+    overdue_items = []
+    for adj in returning_adjs:
+        latest_record = db.query(ReturnRecord).filter(
+            ReturnRecord.adjustment_id == adj.id
+        ).order_by(ReturnRecord.return_count.desc()).first()
+
+        if not latest_record or not latest_record.expected_complete_time:
+            continue
+
+        if now <= latest_record.expected_complete_time:
+            continue
+
+        overdue_hours = (now - latest_record.expected_complete_time).total_seconds() / 3600
+
+        overdue_items.append(OverdueReturnItem(
+            adjustment_id=adj.id,
+            puppet_code=adj.puppet.code if adj.puppet else "",
+            puppet_name=adj.puppet.name if adj.puppet else "",
+            adjuster_name=adj.adjuster.full_name if adj.adjuster else "",
+            return_count=adj.return_count,
+            expected_complete_time=latest_record.expected_complete_time,
+            overdue_hours=round(overdue_hours, 1),
+            latest_return_reason=latest_record.return_reason
+        ))
+
+    return sorted(overdue_items, key=lambda x: x.overdue_hours, reverse=True)
